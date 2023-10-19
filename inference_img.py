@@ -78,7 +78,7 @@ if args.ratio:
         else:
             tmp_img0 = img0
             tmp_img1 = img1
-            for inference_cycle in range(args.rmaxcycles):
+            for _ in range(args.rmaxcycles):
                 middle = model.inference(tmp_img0, tmp_img1)
                 middle_ratio = ( img0_ratio + img1_ratio ) / 2
                 if args.ratio - (args.rthreshold / 2) <= middle_ratio <= args.ratio + (args.rthreshold / 2):
@@ -91,28 +91,38 @@ if args.ratio:
                     img1_ratio = middle_ratio
         img_list.append(middle)
         img_list.append(img1)
+elif model.version >= 3.9:
+    img_list = [img0]
+    n = 2 ** args.exp
+    img_list.extend(
+        model.inference(img0, img1, (i + 1) * 1.0 / n) for i in range(n - 1)
+    )
+    img_list.append(img1)
 else:
-    if model.version >= 3.9:
-        img_list = [img0]        
-        n = 2 ** args.exp
-        for i in range(n-1):
-            img_list.append(model.inference(img0, img1, (i+1) * 1. / n))
-        img_list.append(img1)
-    else:
-        img_list = [img0, img1]
-        for i in range(args.exp):
-            tmp = []
-            for j in range(len(img_list) - 1):
-                mid = model.inference(img_list[j], img_list[j + 1])
-                tmp.append(img_list[j])
-                tmp.append(mid)
-            tmp.append(img1)
-            img_list = tmp
+    img_list = [img0, img1]
+    for _ in range(args.exp):
+        tmp = []
+        for j in range(len(img_list) - 1):
+            mid = model.inference(img_list[j], img_list[j + 1])
+            tmp.extend((img_list[j], mid))
+        tmp.append(img1)
+        img_list = tmp
 
 if not os.path.exists('output'):
     os.mkdir('output')
 for i in range(len(img_list)):
     if args.img[0].endswith('.exr') and args.img[1].endswith('.exr'):
-        cv2.imwrite('output/img{}.exr'.format(i), (img_list[i][0]).cpu().numpy().transpose(1, 2, 0)[:h, :w], [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF])
+        cv2.imwrite(
+            f'output/img{i}.exr',
+            (img_list[i][0]).cpu().numpy().transpose(1, 2, 0)[:h, :w],
+            [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF],
+        )
     else:
-        cv2.imwrite('output/img{}.png'.format(i), (img_list[i][0] * 255).byte().cpu().numpy().transpose(1, 2, 0)[:h, :w])
+        cv2.imwrite(
+            f'output/img{i}.png',
+            (img_list[i][0] * 255)
+            .byte()
+            .cpu()
+            .numpy()
+            .transpose(1, 2, 0)[:h, :w],
+        )

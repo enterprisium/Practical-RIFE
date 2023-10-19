@@ -13,29 +13,24 @@ def gaussian(window_size, sigma):
 def create_window(window_size, channel=1):
     _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
     _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0).to(device)
-    window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()
-    return window
+    return _2D_window.expand(channel, 1, window_size, window_size).contiguous()
 
 def create_window_3d(window_size, channel=1):
     _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
     _2D_window = _1D_window.mm(_1D_window.t())
     _3D_window = _2D_window.unsqueeze(2) @ (_1D_window.t())
-    window = _3D_window.expand(1, channel, window_size, window_size, window_size).contiguous().to(device)
-    return window
+    return (
+        _3D_window.expand(1, channel, window_size, window_size, window_size)
+        .contiguous()
+        .to(device)
+    )
 
 
 def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False, val_range=None):
     # Value range can be different from 255. Other common ranges are 1 (sigmoid) and 2 (tanh).
     if val_range is None:
-        if torch.max(img1) > 128:
-            max_val = 255
-        else:
-            max_val = 1
-
-        if torch.min(img1) < -0.5:
-            min_val = -1
-        else:
-            min_val = 0
+        max_val = 255 if torch.max(img1) > 128 else 1
+        min_val = -1 if torch.min(img1) < -0.5 else 0
         L = max_val - min_val
     else:
         L = val_range
@@ -45,7 +40,7 @@ def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False,
     if window is None:
         real_size = min(window_size, height, width)
         window = create_window(real_size, channel=channel).to(img1.device)
-    
+
     # mu1 = F.conv2d(img1, window, padding=padd, groups=channel)
     # mu2 = F.conv2d(img2, window, padding=padd, groups=channel)
     mu1 = F.conv2d(F.pad(img1, (5, 5, 5, 5), mode='replicate'), window, padding=padd, groups=channel)
@@ -68,28 +63,15 @@ def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False,
 
     ssim_map = ((2 * mu1_mu2 + C1) * v1) / ((mu1_sq + mu2_sq + C1) * v2)
 
-    if size_average:
-        ret = ssim_map.mean()
-    else:
-        ret = ssim_map.mean(1).mean(1).mean(1)
-
-    if full:
-        return ret, cs
-    return ret
+    ret = ssim_map.mean() if size_average else ssim_map.mean(1).mean(1).mean(1)
+    return (ret, cs) if full else ret
 
 
 def ssim_matlab(img1, img2, window_size=11, window=None, size_average=True, full=False, val_range=None):
     # Value range can be different from 255. Other common ranges are 1 (sigmoid) and 2 (tanh).
     if val_range is None:
-        if torch.max(img1) > 128:
-            max_val = 255
-        else:
-            max_val = 1
-
-        if torch.min(img1) < -0.5:
-            min_val = -1
-        else:
-            min_val = 0
+        max_val = 255 if torch.max(img1) > 128 else 1
+        min_val = -1 if torch.min(img1) < -0.5 else 0
         L = max_val - min_val
     else:
         L = val_range
@@ -124,14 +106,8 @@ def ssim_matlab(img1, img2, window_size=11, window=None, size_average=True, full
 
     ssim_map = ((2 * mu1_mu2 + C1) * v1) / ((mu1_sq + mu2_sq + C1) * v2)
 
-    if size_average:
-        ret = ssim_map.mean()
-    else:
-        ret = ssim_map.mean(1).mean(1).mean(1)
-
-    if full:
-        return ret, cs
-    return ret
+    ret = ssim_map.mean() if size_average else ssim_map.mean(1).mean(1).mean(1)
+    return (ret, cs) if full else ret
 
 
 def msssim(img1, img2, window_size=11, size_average=True, val_range=None, normalize=False):
@@ -158,9 +134,7 @@ def msssim(img1, img2, window_size=11, size_average=True, val_range=None, normal
 
     pow1 = mcs ** weights
     pow2 = mssim ** weights
-    # From Matlab implementation https://ece.uwaterloo.ca/~z70wang/research/iwssim/
-    output = torch.prod(pow1[:-1] * pow2[-1])
-    return output
+    return torch.prod(pow1[:-1] * pow2[-1])
 
 
 # Classes to re-use window
@@ -186,8 +160,7 @@ class SSIM(torch.nn.Module):
             self.channel = channel
 
         _ssim = ssim(img1, img2, window=window, window_size=self.window_size, size_average=self.size_average)
-        dssim = (1 - _ssim) / 2
-        return dssim
+        return (1 - _ssim) / 2
 
 class MSSSIM(torch.nn.Module):
     def __init__(self, window_size=11, size_average=True, channel=3):
